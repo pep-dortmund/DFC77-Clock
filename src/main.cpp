@@ -1,80 +1,102 @@
 #include <Arduino.h>
+#include <iostream>
+#include "decode.h"
 #include <ClockDisplay.h>
-#include <Adafruit_NeoPixel.h>
+#include <TimeLib.h>
 
-#define PIN 9
-#define DELAYVAL 500
+const int NUM_SEGMENTS = 2;
+const int PIXEL_PIN = 9;
+ClockDisplay display(PIXEL_PIN, NUM_SEGMENTS);
+const int ANTENNA_PIN = 20;
 
-ClockDisplay display(PIN, 2);
-//Adafruit_NeoPixel neopixel(2*NUMPIXELS, PIN, NEO_GRBW + NEO_KHZ800);
+const int led_pin = 13;
 
-int hours;
-int minutes;
-int i = 0;
-
-void setup() {
-  hours = 18;
-  minutes = 40;
-}
-
-void loop() {
+void setup()
+{
+  Serial.begin(9600);
+  while (!Serial && millis() > 15000)
+  {
+    delay(100);
+  }
+  Serial.println("Hello");
   display.clear();
-    i++;
-    display.setNumber(0, 0);
-    display.setNumber(hours / 10, 0);
-    display.setNumber(hours % 10, 1);
-    display.setNumber(minutes / 10, 2);
-    display.setNumber(minutes % 10, 3);
-
-    delay(1000);
-    minutes++;
-    if (minutes == 60) {
-      minutes = 0;
-      hours++;
-      if (hours == 24) {
-        hours = 0;
-      }
-    } 
-    delay(60000);
+  display.show();
 }
 
+bool state = false;
+uint32_t pulse_start = 0;
+uint32_t first = 0;
+int n_received = 0;
+uint64_t data = 0;
 
-// void loop() {
-  
-  
-//   neopixel.clear();
+void displayTime()
+{
+  auto t = now();
+  int h = hour(t);
+  int m = minute(t);
+  int s = second(t);
 
-//   int breite = 8;
+  display.setNumber(h / 10, 0);
+  display.setNumber(h % 10, 1);
+  display.setNumber(m / 10, 2);
+  display.setNumber(m % 10, 3);
+  display.show();
+}
 
-// for (int lc = breite; lc > 0; lc--)
-// {
-//   for (int i = breite-lc; i < lc; i++) {
-//     neopixel.setPixelColor(i+breite*(breite - lc), neopixel.Color(255, 0, 0));
-//     neopixel.show();
-//     delay(DELAYVAL);
-//   }
+uint32_t last_update = 0;
+const uint32_t interval = 500;
 
-//   for (int i = breite-lc; i < lc; i++) {
-//     neopixel.setPixelColor((i+2)*breite-1-(breite -lc), neopixel.Color(0, 255, 0));
-//     neopixel.show();
-//     delay(DELAYVAL);
-//   }
+void loop()
+{
+  uint32_t t = millis();
+  bool signal = digitalRead(ANTENNA_PIN);
+  digitalWrite(led_pin, signal);
 
-//   for (int i = lc; i > breite - lc; i--) {
-//     neopixel.setPixelColor(breite*(breite-1)+i-1-breite*(breite - lc), neopixel.Color(0, 0, 255));
-//     neopixel.show();
-//     delay(DELAYVAL);
-//   }
+  if (!state && signal)
+  {
+    // rising edge
+    if (first == 0)
+    {
+      first = t;
+    }
+    else
+    {
+      float seconds = 1e-3 * (t - first);
+      Serial.println(seconds, 1);
 
-//   for (int i = lc; i > breite-lc; i--) {
-//     neopixel.setPixelColor((i-2)*breite+(breite-lc), neopixel.Color(255, 255, 0));
-//     neopixel.show();
-//     delay(DELAYVAL);
-//   }
-// }
+      if ((t - pulse_start) > 1500)
+      {
+        if (n_received >= 59)
+        {
+          decode(data);
+        }
+        data = 0;
+        n_received = 0;
+        Serial.println("New Minute");
+      }
+    }
+    pulse_start = t;
+  }
+  else if (state && !signal)
+  {
+    // falling edge
+    uint32_t duration = t - pulse_start;
+    bool value = duration > 150;
+    if (value)
+    {
+      data |= static_cast<uint64_t>(1) << n_received;
+    }
+    n_received++;
+    Serial.println(duration);
+  }
 
+  state = signal;
 
-//   // Loop in a inward spiral
-
-
-// }
+  if (timeStatus() == timeSet && ((t - last_update) > interval))
+  {
+    Serial.println("Update display");
+    displayTime();
+    last_update = t;
+  }
+  // delay(10);
+}
