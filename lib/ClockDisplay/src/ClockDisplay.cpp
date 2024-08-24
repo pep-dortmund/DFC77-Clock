@@ -12,7 +12,7 @@
 ClockDisplay::ClockDisplay(int pin, int numSegments) {
     neopixel = Adafruit_NeoPixel(numSegments*segmentLeds, pin, NEO_GRBW + NEO_KHZ800);
     neopixel.begin();
-    neopixel.setBrightness(5);
+    neopixel.setBrightness(10);
     neopixel.clear();
     neopixel.show();
 }
@@ -34,10 +34,11 @@ void ClockDisplay::setNumber(int number, int position) {
     {
         for (int j = 0; j < digitHeight; j++)
         {
-            int displayPosition = getDisplayPosition(i+position*4+1, j+1);
+            int displayPosition = getDisplayPosition(i+position*4+1, j);
 
             if (digit[j][i] == 1)
             {
+                
                 neopixel.setPixelColor(displayPosition, neopixel.Color(0, 0, 0, 255));
             }
             else
@@ -46,6 +47,39 @@ void ClockDisplay::setNumber(int number, int position) {
             }
         }
     }
+}
+
+void ClockDisplay::setSeconds(int seconds) {
+    seconds += 2;
+    int litLeds = seconds / 2;
+
+    for (int i = 0; i < 30; i++)
+    {
+        if (i < litLeds)
+        {
+            if (i+1 == litLeds)
+            {
+                neopixel.setPixelColor(getDisplayPosition(1+i/2, (i%2)+6), neopixel.Color(0, 255*((seconds+1)%2), 0, 255*(seconds%2)));
+            }
+            else
+            {
+                neopixel.setPixelColor(getDisplayPosition(1+i/2, (i%2)+6), neopixel.Color(0, 0, 0, 255));
+            }
+        }
+        else
+        {
+            neopixel.setPixelColor(getDisplayPosition(1+i/2, (i%2)+6), neopixel.Color(0, 0, 0, 0));
+        }
+    }
+
+    if (signalMissing) {
+        neopixel.setPixelColor(getDisplayPosition(0, 6), neopixel.Color(0, 0, seconds % 2 == 0 ? 255 : 0, 0));
+        neopixel.setPixelColor(getDisplayPosition(0, 7), neopixel.Color(0, 0, seconds % 2 == 1 ? 255 : 0, 0));
+    }
+}
+
+void ClockDisplay::setSignalMissing(bool signalMissing) {
+    this->signalMissing = signalMissing;
 }
 
 void ClockDisplay::clear() {
